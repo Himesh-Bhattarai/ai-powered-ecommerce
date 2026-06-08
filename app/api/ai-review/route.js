@@ -2,10 +2,15 @@ import OpenAI from 'openai';
 import connectDB from '@/lib/database/db';
 import Review from "@/models/Review";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function POST(request) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return Response.json(
+        { message: "OPENAI_API_KEY is not defined" },
+        { status: 503 }
+      );
+    }
+
     await connectDB();
 
     const { productId } = await request.json();
@@ -25,6 +30,8 @@ export async function POST(request) {
         `Review ${i + 1}: ${review.content}. Rating: ${review.rating}/5`  
       )
       .join('\n');
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const aiResponse = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o", 
