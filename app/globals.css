@@ -24,3 +24,65 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid #14b8a6;
+  outline-offset: 2px;
+}
+
+.buffer-bar {
+  animation: buffer-slide 1.2s ease-in-out infinite;
+  transform-origin: left;
+}
+
+.buffer-sheen {
+  animation: buffer-sheen 1.4s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.7),
+    transparent
+  );
+  transform: translateX(-100%);
+}
+
+@keyframes buffer-slide {
+  0% {
+    transform: translateX(-100%) scaleX(0.45);
+  }
+
+  50% {
+    transform: translateX(65%) scaleX(1.15);
+  }
+
+  100% {
+    transform: translateX(210%) scaleX(0.45);
+  }
+}
+
+@keyframes buffer-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
