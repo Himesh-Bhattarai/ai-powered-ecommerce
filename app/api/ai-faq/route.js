@@ -1,12 +1,14 @@
-import OpenAI from "openai";
+import { createAiClient, getAiModel } from "@/lib/ai/client";
 import connectDB from "@/lib/database/db";
 import Product from "@/models/Product";
 
 export async function POST(request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const aiClient = createAiClient();
+
+    if (!aiClient) {
       return Response.json(
-        { message: "OPENAI_API_KEY is not defined" },
+        { message: "AI API key is not defined" },
         { status: 503 }
       );
     }
@@ -50,12 +52,9 @@ Respond ONLY with raw JSON, no markdown, no explanation:
   ]
 }`;
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    const aiResponse = await openai.chat.completions.create({
-      model: "gpt-4o-mini",   // cheaper + fast enough for this
+console.log("Let call ai")
+    const aiResponse = await aiClient.chat.completions.create({
+      model: process.env.AI_FAQ_MODEL || getAiModel(),
       messages: [{ role: "user", content: prompt }],
       temperature: 0.5,
       max_tokens: 1000,
@@ -63,11 +62,11 @@ Respond ONLY with raw JSON, no markdown, no explanation:
     });
 
     const aiData = JSON.parse(aiResponse.choices[0].message.content);
-
+    console.log("Ai Response", aiData)
     // save FAQs directly onto the product document
-    await Product.findByIdAndUpdate(productId, {
-      faqs: aiData.faqs
-    });
+    // await Product.findByIdAndUpdate(productId, {
+    //   faqs: aiData.faqs
+    // });
 
     return Response.json(
       { message: "FAQs generated successfully", faqs: aiData.faqs },
@@ -75,7 +74,21 @@ Respond ONLY with raw JSON, no markdown, no explanation:
     );
 
   } catch (error) {
-    console.error(error);
+    console.error("AI FAQ route error:", {
+      status: error?.status,
+      message: error?.message,
+    });
+
+    if (error?.status) {
+      return Response.json(
+        {
+          message: "AI provider request failed",
+          status: error.status,
+        },
+        { status: error.status === 429 ? 503 : 502 }
+      );
+    }
+
     return Response.json(
       { message: "Internal server error" },
       { status: 500 }

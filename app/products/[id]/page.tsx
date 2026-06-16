@@ -10,13 +10,9 @@ import ProductCard from "@/components/products/ProductCard";
 import ProductDetailTabs from "@/components/products/ProductDetailTabs";
 import ProductFaq from "@/components/products/ProductFaq";
 import ProductPurchaseActions from "@/components/products/ProductPurchaseActions";
+import ProductViewTracker from "@/components/products/ProductViewTracker";
 import ReviewUploadForm from "@/components/products/ReviewUploadForm";
-import {
-  findFallbackProduct,
-  getFallbackProducts,
-} from "@/lib/catalog/fallbackProducts";
 import type { Product as ProductType } from "@/types/product";
-import { resolveWithTimeout } from "@/lib/utils/resolveWithTimeout";
 
 type ProductPageProps = {
   params: Promise<{
@@ -99,23 +95,13 @@ function getFallbackAiReviewSummary(product: ProductType) {
 }
 
 async function getProduct(id: string): Promise<ProductType | null> {
-  const fallbackProduct = findFallbackProduct(id);
-
-  if (fallbackProduct) {
-    return fallbackProduct;
-  }
-
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return null;
   }
 
   try {
-    const product = await resolveWithTimeout(
-      (async () => {
-        await connectDB();
-        return Product.findById(id).lean();
-      })()
-    );
+    await connectDB();
+    const product = await Product.findById(id).lean();
 
     if (!product) {
       return null;
@@ -137,27 +123,15 @@ async function getProduct(id: string): Promise<ProductType | null> {
 }
 
 async function getRelatedProducts(product: ProductType): Promise<ProductType[]> {
-  const fallbackRelatedProducts = getFallbackProducts(product.category)
-    .filter((item) => item._id !== product._id)
-    .slice(0, 6);
-
   try {
-    const products = await resolveWithTimeout(
-      (async () => {
-        await connectDB();
+    await connectDB();
 
-        return Product.find({
-          _id: { $ne: product._id },
-          category: product.category,
-        })
-          .limit(6)
-          .lean();
-      })()
-    );
-
-    if (!products || products.length === 0) {
-      return fallbackRelatedProducts;
-    }
+    const products = await Product.find({
+      _id: { $ne: product._id },
+      category: product.category,
+    })
+      .limit(6)
+      .lean();
 
     return products.map((item) => ({
       _id: item._id.toString(),
@@ -170,7 +144,7 @@ async function getRelatedProducts(product: ProductType): Promise<ProductType[]> 
     }));
   } catch (error) {
     console.error("Unable to load related products from MongoDB.", error);
-    return fallbackRelatedProducts;
+    return [];
   }
 }
 
@@ -265,6 +239,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <SearchNavbar />
+      <ProductViewTracker product={product} />
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link

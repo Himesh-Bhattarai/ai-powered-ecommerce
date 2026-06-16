@@ -1,42 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Product } from "@/types/product";
 
 type ProductFaqProps = {
   product: Product;
 };
 
-function getFallbackFaqs(product: Product) {
-  return [
-    {
-      question: `Is ${product.name} good for everyday use?`,
-      answer: `${product.name} is listed in ${product.category} and is described as a practical option for regular use. Check the product description and images to make sure it fits your exact need.`,
-    },
-    {
-      question: "What should I check before buying?",
-      answer: `Review the price, stock status, product image, and category details before checkout. For ${product.category}, also compare the key features in the description with what you already need.`,
-    },
-    {
-      question: "Does this product match the listing description?",
-      answer: `The listing highlights: ${product.description}. Use that as the main reference for what the product should offer.`,
-    },
-    {
-      question: "Can this be bought as a gift?",
-      answer: `${product.name} can work as a gift if the buyer is interested in ${product.category}. Confirm the recipient's preference before ordering.`,
-    },
-    {
-      question: "What happens if the product is unavailable?",
-      answer: product.stock && product.stock > 0
-        ? "This item is currently shown as available, but stock can change before checkout."
-        : "This item is currently shown as limited or unavailable, so check related products in the same category.",
-    },
-  ];
+type ProductFaq ={
+  question: string;
+  answer: string;
 }
 
 export default function ProductFaq({ product }: ProductFaqProps) {
   const [openIndex, setOpenIndex] = useState(0);
-  const faqs = getFallbackFaqs(product);
+  const[faqs, setFaqs]= useState<ProductFaq []>([]);
+
+  useEffect(()=>{
+    async function loadFaqs(){
+      const res = await fetch(`/api/faq?productId=${product._id}`);
+      
+
+      const data = await res.json();
+      setFaqs(data.faqs || [])
+    }
+    loadFaqs();
+  },[product._id])
 
   return (
     <section className="mt-10 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-7">

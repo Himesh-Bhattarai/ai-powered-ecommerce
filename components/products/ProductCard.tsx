@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/components/cart/CartProvider";
 import { useWishlist } from "@/components/wishlist/WishlistProvider";
+import { trackUserEvent } from "@/lib/personalization/client";
 import type { Product } from "@/types/product";
 
 type ProductCardProps = {
@@ -20,11 +21,23 @@ export default function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart();
   const { isSaved, toggleItem } = useWishlist();
   const saved = isSaved(product._id);
+  const trackProductClick = () => {
+    void trackUserEvent({
+      eventType: "product_click",
+      productId: product._id,
+      productName: product.name,
+      category: product.category,
+    });
+  };
 
   return (
     <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative aspect-square overflow-hidden bg-slate-100">
-        <Link href={`/products/${product._id}`} className="block h-full">
+        <Link
+          href={`/products/${product._id}`}
+          onClick={trackProductClick}
+          className="block h-full"
+        >
           {product.image ? (
             <Image
               src={product.image}
@@ -71,7 +84,11 @@ export default function ProductCard({ product }: ProductCardProps) {
       </div>
 
       <div className="space-y-3 p-3">
-        <Link href={`/products/${product._id}`} className="block space-y-3">
+        <Link
+          href={`/products/${product._id}`}
+          onClick={trackProductClick}
+          className="block space-y-3"
+        >
           <div className="space-y-2">
             <div className="min-w-0">
               <p className="truncate text-[11px] font-semibold uppercase text-teal-700">
@@ -97,6 +114,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </span>
           <Link
             href={`/products/${product._id}`}
+            onClick={trackProductClick}
             className="font-bold text-teal-700 transition hover:text-teal-800"
           >
             Details

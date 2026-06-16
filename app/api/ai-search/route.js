@@ -1,11 +1,24 @@
-import OpenAI from 'openai';
+import { createAiClient, getAiModel } from '@/lib/ai/client';
 import connectDB from '@/lib/database/db';
-import {
-    getFallbackProducts,
-    searchFallbackProducts,
-} from '@/lib/catalog/fallbackProducts';
-import { resolveWithTimeout } from '@/lib/utils/resolveWithTimeout';
 import Product from '@/models/Product';
+
+const SEARCH_STOP_WORDS = new Set([
+    "a",
+    "an",
+    "the",
+    "for",
+    "me",
+    "please",
+    "show",
+    "find",
+    "search",
+    "shop",
+    "buy",
+    "product",
+    "products",
+    "item",
+    "items",
+]);
 
 function normalizeProducts(products) {
     return products.map((product) => ({
@@ -15,77 +28,84 @@ function normalizeProducts(products) {
 }
 
 async function getCatalogProducts(category) {
-    try {
-        const products = await resolveWithTimeout(
-            (async () => {
-                await connectDB();
-                const categoryFilter = category && category !== "All" ? { category } : {};
-                return Product.find(categoryFilter).lean();
-            })()
-        );
+    await connectDB();
 
-        return products && products.length > 0
-            ? normalizeProducts(products)
-            : getFallbackProducts(category);
-    } catch (error) {
-        console.error("Unable to load MongoDB products for search.", error);
-        return getFallbackProducts(category);
-    }
+    const categoryFilter = category && category !== "All" ? { category } : {};
+    const products = await Product.find(categoryFilter).lean();
+
+    return normalizeProducts(products);
 }
 
 function localSearch(products, query) {
-    const trimmedQuery = query.trim().toLowerCase();
+    const trimmedQuery = String(query ?? "").trim().toLowerCase();
 
     if (!trimmedQuery) {
         return products;
     }
 
+    const searchTerms = trimmedQuery
+        .split(/[^a-z0-9]+/i)
+        .map((term) => term.trim().toLowerCase())
+        .filter((term) => term.length > 1 && !SEARCH_STOP_WORDS.has(term));
+    const fallbackTerms = searchTerms.length > 0 ? searchTerms : [trimmedQuery];
+
     return products.filter((product) =>
         [product.name, product.description, product.category]
             .join(" ")
             .toLowerCase()
-            .includes(trimmedQuery)
+            .includes(trimmedQuery) ||
+        fallbackTerms.some((term) =>
+            [product.name, product.description, product.category]
+                .join(" ")
+                .toLowerCase()
+                .includes(term)
+        )
     );
 }
 
 export async function POST(request) {
-    const { query = "", category = "All" } = await request.json();
-    const trimmedQuery = query.trim();
-    const catalogProducts = await getCatalogProducts(category);
-
-    if (!trimmedQuery) {
-        return Response.json(catalogProducts);
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-        const products = localSearch(catalogProducts, trimmedQuery);
-        return Response.json(
-            products.length > 0
-                ? products
-                : searchFallbackProducts(trimmedQuery, category)
-        );
-    }
-
     try {
-        const client = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY
-        });
+        const { query = "", category = "All" } = await request.json();
+        const trimmedQuery = String(query ?? "").trim();
+        const catalogProducts = await getCatalogProducts(String(category || "All"));
 
-        const aiResponse = await client.chat.completions.create({
-            model: process.env.OPENAI_MODEL || "gpt-5.2",
-            messages: [
-                {
-                    role: "developer",
-                    content: "Return only 1 to 4 concise ecommerce search keywords. No punctuation, no explanation.",
-                },
-                {
-                    role: "user",
-                    content: `Search request: ${trimmedQuery}`,
-                },
-            ],
-        });
+        if (!trimmedQuery) {
+            return Response.json(catalogProducts);
+        }
 
-        const keyword = aiResponse.choices[0]?.message?.content?.trim() || trimmedQuery;
+        const client = createAiClient();
+
+        if (!client) {
+            return Response.json(localSearch(catalogProducts, trimmedQuery));
+        }
+
+        let keyword = trimmedQuery;
+
+        try {
+            const aiResponse = await client.chat.completions.create({
+                model: process.env.AI_SEARCH_MODEL || getAiModel(),
+                messages: [
+                    {
+                        role: "system",
+                        content: "Return only 1 to 4 concise ecommerce search keywords. No punctuation, no explanation.",
+                    },
+                    {
+                        role: "user",
+                        content: `Search request: ${trimmedQuery}`,
+                    },
+                ],
+            });
+
+            keyword = aiResponse.choices[0]?.message?.content?.trim() || trimmedQuery;
+            console.log("AI search keyword:", keyword);
+        } catch (error) {
+            console.warn("AI search provider failed. Falling back to local product search.", {
+                status: error?.status,
+                message: error?.message,
+            });
+            return Response.json(localSearch(catalogProducts, trimmedQuery));
+        }
+
         const keywords = keyword
             .split(/[\s,]+/)
             .map((item) => item.trim())
@@ -107,7 +127,10 @@ export async function POST(request) {
                 : localSearch(catalogProducts, trimmedQuery)
         );
     } catch (error) {
-        console.error("AI search failed. Falling back to local product search.", error);
-        return Response.json(localSearch(catalogProducts, trimmedQuery));
+        console.error("AI search failed.", error);
+        return Response.json(
+            { message: "Search failed" },
+            { status: 500 }
+        );
     }
 }

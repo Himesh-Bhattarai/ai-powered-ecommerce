@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { trackUserEvent } from "@/lib/personalization/client";
 import type { Product } from "@/types/product";
 
 type CartItem = {
@@ -83,6 +84,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
 
       return [...currentItems, { product, quantity }];
+    });
+    void trackUserEvent({
+      eventType: "add_to_cart",
+      productId: product._id,
+      productName: product.name,
+      category: product.category,
+      quantity,
     });
     setIsOpen(true);
   }, []);

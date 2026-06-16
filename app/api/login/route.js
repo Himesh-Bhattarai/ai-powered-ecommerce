@@ -3,10 +3,11 @@ import User from "@/models/User";
 import { verifyPassword } from "@/lib/auth/password";
 import { generateToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
+import { mergeGuestPreferenceIntoUser } from "@/lib/personalization/server";
 
 export async function POST(request) {
   try {
-    const { email, password } = await request.json();
+    const { email, password, sessionId } = await request.json();
 
     if (!email || !password) {
       return Response.json(
@@ -56,6 +57,12 @@ export async function POST(request) {
       maxAge: 60 * 60 * 24 * 7,
       sameSite: "lax"
     })
+
+    await mergeGuestPreferenceIntoUser(sessionId, user._id.toString()).catch(
+      (error) => {
+        console.warn("Unable to merge guest preference after login.", error.message);
+      }
+    );
 
     return Response.json(
       {

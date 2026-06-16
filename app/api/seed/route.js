@@ -2,10 +2,10 @@ import connectDB from "@/lib/database/db";
 import Product from "@/models/Product";
 
 export async function POST() {
+  try {
     await connectDB();
-   
 
-    const products = await Product.insertMany([
+    const seedProducts = [
   {
     name: "Sony WH-1000XM5 Wireless Headphones",
     price: 349.99,
@@ -216,12 +216,30 @@ export async function POST() {
     image: "https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=400",
     category: "Automotive"
   }
-]);
+];
+
+    const result = await Product.bulkWrite(
+      seedProducts.map((product) => ({
+        updateOne: {
+          filter: { name: product.name },
+          update: { $set: product },
+          upsert: true,
+        },
+      }))
+    );
+    const count = await Product.countDocuments();
 
     return Response.json({
-        message: "Products seeded successfully",
-        count: products.length,
+      message: "Products seeded successfully",
+      count,
+      modified: result.modifiedCount,
+      upserted: result.upsertedCount,
     });
-
-        }
-    
+  } catch (error) {
+    console.error("Seed failed:", error);
+    return Response.json(
+      { message: "Seed failed" },
+      { status: 500 }
+    );
+  }
+}

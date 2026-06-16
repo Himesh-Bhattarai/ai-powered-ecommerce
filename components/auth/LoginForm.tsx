@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getGuestSessionId } from "@/lib/personalization/client";
 
 
 export default function LoginForm() {
@@ -29,6 +30,7 @@ export default function LoginForm() {
         body: JSON.stringify({
           email: formData.get("email"),
           password: formData.get("password"),
+          sessionId: getGuestSessionId(),
         }),
       });
       const data = await response.json();

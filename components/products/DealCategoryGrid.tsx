@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { trackUserEvent } from "@/lib/personalization/client";
 import type { Product } from "@/types/product";
 
 type DealCategoryGridProps = {
@@ -97,6 +98,17 @@ export default function DealCategoryGrid({ products, loading }: DealCategoryGrid
                 <Link
                   key={`${section.title}-${product._id}`}
                   href={`/products/${product._id}`}
+                  onClick={() =>
+                    void trackUserEvent({
+                      eventType: "product_click",
+                      productId: product._id,
+                      productName: product.name,
+                      category: product.category,
+                      metadata: {
+                        source: "deal-category-grid",
+                      },
+                    })
+                  }
                   className="group block"
                 >
                   <div className="relative aspect-square overflow-hidden rounded-lg bg-slate-100">

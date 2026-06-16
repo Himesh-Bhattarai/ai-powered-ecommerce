@@ -1,12 +1,14 @@
-import OpenAI from 'openai';
+import { createAiClient, getAiModel } from '@/lib/ai/client';
 import connectDB from '@/lib/database/db';
 import Review from "@/models/Review";
 
 export async function POST(request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const aiClient = createAiClient();
+
+    if (!aiClient) {
       return Response.json(
-        { message: "OPENAI_API_KEY is not defined" },
+        { message: "AI API key is not defined" },
         { status: 503 }
       );
     }
@@ -27,14 +29,12 @@ export async function POST(request) {
     const reviewText = reviews                      
       .slice(0, 50)                                
       .map((review, i) =>
-        `Review ${i + 1}: ${review.content}. Rating: ${review.rating}/5`  
+        `Review ${i + 1}: ${review.comment || ""}. Rating: ${review.rating}/5`  
       )
       .join('\n');
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const aiResponse = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o", 
+    const aiResponse = await aiClient.chat.completions.create({
+      model: process.env.AI_REVIEW_MODEL || getAiModel(), 
       messages: [
         {
           role: "system",                            
@@ -48,6 +48,7 @@ export async function POST(request) {
     });
 
     const summary = aiResponse.choices[0].message.content;  
+    console.log("Ai Review Summary", summary)
 
     return new Response(                        
       JSON.stringify({ summary }),

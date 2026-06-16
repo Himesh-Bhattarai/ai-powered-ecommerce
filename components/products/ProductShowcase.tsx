@@ -1,12 +1,16 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import ChatbotButton from "@/components/chat/ChatbotButton";
 import Navbar from "@/components/layout/Navbar";
 import DealCategoryGrid from "@/components/products/DealCategoryGrid";
 import MarketingSlider from "@/components/products/MarketingSlider";
 import ProductCard from "@/components/products/ProductCard";
-import { fallbackProducts } from "@/lib/catalog/fallbackProducts";
+import {
+  fetchPersonalizedRecommendations,
+  trackUserEvent,
+  type RecommendationResponse,
+} from "@/lib/personalization/client";
 import type { Product } from "@/types/product";
 
 type PriceFilter = "all" | "under-25" | "25-100" | "over-100";
@@ -106,6 +110,32 @@ export default function ProductShowcase() {
     useState<AvailabilityFilter>("all");
   const [sortOption, setSortOption] = useState<SortOption>("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [recommendations, setRecommendations] =
+    useState<RecommendationResponse | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+
+  const loadRecommendations = useCallback(
+    async ({
+      forceAi = false,
+      trigger = "catalog",
+    }: {
+      forceAi?: boolean;
+      trigger?: string;
+    } = {}) => {
+      setRecommendationsLoading(true);
+
+      try {
+        const data = await fetchPersonalizedRecommendations({ forceAi, trigger });
+
+        if (data) {
+          setRecommendations(data);
+        }
+      } finally {
+        setRecommendationsLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -117,12 +147,10 @@ export default function ProductShowcase() {
         }
 
         const data = (await response.json()) as Product[];
-        setAllProducts(data.length > 0 ? data : fallbackProducts);
+        setAllProducts(data);
         setError("");
       } catch (err) {
-        console.error("Unable to load products. Showing fallback catalog.", err);
-        setAllProducts(fallbackProducts);
-        setError("");
+        setError(err instanceof Error ? err.message : "Unable to load products");
       } finally {
         setLoading(false);
       }
@@ -132,55 +160,54 @@ export default function ProductShowcase() {
   }, []);
 
   useEffect(() => {
-    if (loading) {
-      return;
-    }
+    const handlePersonalizationReady = () => {
+      void loadRecommendations({ trigger: "event-signal" });
+    };
 
-    const trimmedQuery = query.trim();
+    window.addEventListener(
+      "bazar:personalization-ready",
+      handlePersonalizationReady
+    );
+
+    return () => {
+      window.removeEventListener(
+        "bazar:personalization-ready",
+        handlePersonalizationReady
+      );
+    };
+  }, [loadRecommendations]);
+
+  const runAiSearch = useCallback(async (value: string) => {
+    const trimmedQuery = value.trim();
 
     if (!trimmedQuery) {
       return;
     }
 
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        setSearching(true);
-        setError("");
+    try {
+      setSearching(true);
+      setError("");
 
-        const response = await fetch("/api/ai-search", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ query: trimmedQuery }),
-          signal: controller.signal,
-        });
+      const response = await fetch("/api/ai-search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      });
 
-        if (!response.ok) {
-          throw new Error("AI search failed");
-        }
-
-        const data = (await response.json()) as Product[];
-        setAiProducts(data);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-
-        console.error("AI search failed. Showing local product matches.", err);
-        setAiProducts(searchProductsLocally(allProducts, trimmedQuery));
-        setError("");
-      } finally {
-        setSearching(false);
+      if (!response.ok) {
+        throw new Error("AI search failed");
       }
-    }, 450);
 
-    return () => {
-      window.clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [allProducts, loading, query]);
+      const data = (await response.json()) as Product[];
+      setAiProducts(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI search failed");
+    } finally {
+      setSearching(false);
+    }
+  }, []);
 
   const writeCatalogUrl = (searchValue: string, categoryValue: string) => {
     const params = new URLSearchParams();
@@ -204,15 +231,54 @@ export default function ProductShowcase() {
 
   const updateQuery = (value: string) => {
     setQuery(value);
-    if (!value.trim()) {
-      setAiProducts([]);
-    }
+    setAiProducts([]);
     writeCatalogUrl(value, selectedCategory);
   };
 
   const updateCategory = (category: string) => {
     setSelectedCategory(category);
     writeCatalogUrl(query, category);
+  };
+
+  const submitSearch = (value: string) => {
+    updateQuery(value);
+    void runAiSearch(value);
+    void trackUserEvent({
+      eventType: "search",
+      query: value,
+      metadata: {
+        source: "catalog-navbar",
+      },
+    });
+  };
+
+  const submitAssistantQuery = (value: string) => {
+    updateQuery(value);
+    void runAiSearch(value);
+    void trackUserEvent({
+      eventType: "ai_chat_request",
+      query: value,
+      metadata: {
+        source: "catalog-chatbot",
+      },
+    });
+    void loadRecommendations({
+      forceAi: true,
+      trigger: "ai-chat-request",
+    });
+  };
+
+  const selectBundle = (queryValue: string, title: string) => {
+    updateQuery(queryValue);
+    void runAiSearch(queryValue);
+    void trackUserEvent({
+      eventType: "search",
+      query: queryValue,
+      metadata: {
+        source: "recommendation-bundle",
+        title,
+      },
+    });
   };
 
   const shouldUseAiResults = Boolean(query.trim());
@@ -289,12 +355,18 @@ export default function ProductShowcase() {
       <Navbar
         searchValue={query}
         onSearchChange={updateQuery}
-        onSearchSubmit={updateQuery}
+        onSearchSubmit={submitSearch}
       />
-      <ChatbotButton onQuery={updateQuery} />
+      <ChatbotButton onQuery={submitAssistantQuery} />
 
       <section className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         <MarketingSlider products={allProducts} loading={loading} />
+
+        <PersonalizedRecommendations
+          loading={recommendationsLoading}
+          recommendations={recommendations}
+          onBundleSelect={selectBundle}
+        />
 
         <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-4">
@@ -548,6 +620,80 @@ export default function ProductShowcase() {
         )}
       </section>
     </main>
+  );
+}
+
+type PersonalizedRecommendationsProps = {
+  loading: boolean;
+  recommendations: RecommendationResponse | null;
+  onBundleSelect: (query: string, title: string) => void;
+};
+
+function PersonalizedRecommendations({
+  loading,
+  recommendations,
+  onBundleSelect,
+}: PersonalizedRecommendationsProps) {
+  const products = recommendations?.products?.slice(0, 5) || [];
+  const bundles = recommendations?.bundles?.slice(0, 3) || [];
+
+  if (!loading && products.length === 0 && bundles.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mb-6 rounded-lg border border-teal-100 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-950">Personalized picks</p>
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            {recommendations?.aiUsed
+              ? "AI bundles from your recent shopping signals"
+              : "Suggestions from your recent shopping signals"}
+          </p>
+        </div>
+        {recommendations?.signalReady && (
+          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
+            Updated
+          </span>
+        )}
+      </div>
+
+      {loading && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-11 rounded-lg bg-slate-100" />
+          ))}
+        </div>
+      )}
+
+      {!loading && bundles.length > 0 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          {bundles.map((bundle) => {
+            const queryValue = bundle.query || bundle.category || bundle.title;
+
+            return (
+              <button
+                key={`${bundle.title}-${queryValue}`}
+                type="button"
+                onClick={() => onBundleSelect(queryValue, bundle.title)}
+                className="shrink-0 rounded-full border border-teal-100 bg-teal-50 px-4 py-2 text-sm font-bold text-teal-800 transition hover:border-teal-300 hover:bg-white"
+              >
+                {bundle.title}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && products.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {products.map((product) => (
+            <ProductCard key={`recommended-${product._id}`} product={product} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

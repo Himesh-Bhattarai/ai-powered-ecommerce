@@ -6,11 +6,13 @@ status(201): Working as expected (fix/feature).
 status(202): Verified with real usage.
 status(203): Documentation-only update (README, docs, comments).
 status(204): Production-ready / release quality.
+
 In Progress
 status(101): Draft or scaffolding.
 status(102): Partial implementation.
 status(103): Blocked / waiting on dependency.
 status(104): Research / spike / Experimental / prototype.
+
 Change / Improvement
 status(300): Refactor (no behavior change).
 status(301): New capability added.

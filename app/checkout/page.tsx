@@ -5,7 +5,8 @@ import Link from "next/link";
 import { FormEvent, ReactNode, useState } from "react";
 import { useCart } from "@/components/cart/CartProvider";
 import Navbar from "@/components/layout/Navbar";
-
+import { trackUserEvent } from "@/lib/personalization/client";
+import {useAuth} from "@/context/authContext";
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -20,8 +21,22 @@ export default function CheckoutPage() {
   const estimatedTax = subtotal * 0.08;
   const total = subtotal + shipping + estimatedTax;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    await Promise.all(
+      items.map((item) =>
+        trackUserEvent({
+          eventType: "purchase",
+          productId: item.product._id,
+          productName: item.product.name,
+          category: item.product.category,
+          quantity: item.quantity,
+          metadata: {
+            itemTotal: item.product.price * item.quantity,
+          },
+        })
+      )
+    );
     setOrderTotal(total);
     setOrderPlaced(true);
     clearCart();
