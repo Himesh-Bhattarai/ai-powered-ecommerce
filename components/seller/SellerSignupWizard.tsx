@@ -2,8 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import { useSeller } from "@/context/sellerContext";
 
+
+// formData type 
 type FormData = {
   phoneNumber: string;
   password: string;
@@ -34,6 +38,14 @@ type Step = {
   fields: (keyof FormData)[];
 };
 
+type LoginFormData = {
+  identifier: string;
+  password: string;
+};
+
+type ViewMode = "signup" | "login";
+
+// Initial Form Data
 const initialFormData: FormData = {
   phoneNumber: "",
   password: "",
@@ -57,6 +69,7 @@ const initialFormData: FormData = {
   accountNumber: "",
   bankBranch: "",
 };
+
 
 const steps: Step[] = [
   {
@@ -222,13 +235,21 @@ const faqs = [
   },
 ];
 
+const initialLoginFormData: LoginFormData = {
+  identifier: "",
+  password: "",
+};
+
+// phoneNumber sanitize
 function sanitizePhone(value: string) {
   return value.replace(/\D/g, "").slice(0, 10);
 }
 
+// valid email check
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
+
 
 function getFieldLabel(field: keyof FormData) {
   const labels: Record<keyof FormData, string> = {
@@ -347,12 +368,25 @@ function TextAreaField({
 }
 
 export default function SellerSignupWizard() {
+  const router = useRouter();
+  const { login: setLoggedInSeller } = useSeller();
+  const [viewMode, setViewMode] = useState<ViewMode>("signup");
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [loginFormData, setLoginFormData] = useState<LoginFormData>(
+    initialLoginFormData
+  );
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const step = steps[currentStep];
-  const progress = Math.round(((currentStep + 1) / steps.length) * 100);
+  const progress =
+    viewMode === "signup"
+      ? Math.round(((currentStep + 1) / steps.length) * 100)
+      : 100;
   const completedFields = useMemo(
     () =>
       Object.values(formData).filter((value) => String(value).trim().length > 0)
@@ -369,6 +403,14 @@ export default function SellerSignupWizard() {
       ...currentErrors,
       [name]: "",
     }));
+  };
+
+  const updateLoginField = (name: keyof LoginFormData, value: string) => {
+    setLoginFormData((currentData) => ({
+      ...currentData,
+      [name]: name === "identifier" ? value.trimStart() : value,
+    }));
+    setLoginError("");
   };
 
   const validateStep = () => {
@@ -402,6 +444,15 @@ export default function SellerSignupWizard() {
     return Object.keys(nextErrors).length === 0;
   };
 
+  const switchView = (nextView: ViewMode) => {
+    setViewMode(nextView);
+    setError("");
+    setLoginError("");
+    setSubmitted(false);
+  };
+
+
+  // go next and back function
   const goNext = () => {
     if (!validateStep()) {
       return;
@@ -414,14 +465,111 @@ export default function SellerSignupWizard() {
     setCurrentStep((value) => Math.max(value - 1, 0));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
 
-    if (!validateStep()) {
+  // On handleSubmit call api
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  event.preventDefault();
+
+  if (!validateStep()) {
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setError("");
+
+    const res = await fetch("/api/seller-signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(formData),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      setError(data?.message || "Something went wrong.");
       return;
     }
 
     setSubmitted(true);
+    setFormData(initialFormData);
+    setErrors({});
+  } catch {
+    setError("Unable to connect to server. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+// login API call
+
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const identifier = loginFormData.identifier.trim();
+    const isEmailLogin = identifier.includes("@");
+
+    if (!identifier) {
+      setLoginError("Email or mobile number is required.");
+      return;
+    }
+
+    if (isEmailLogin && !isValidEmail(identifier)) {
+      setLoginError("Enter a valid email address.");
+      return;
+    }
+
+    if (!isEmailLogin && sanitizePhone(identifier).length !== 10) {
+      setLoginError("Enter a valid 10 digit mobile number.");
+      return;
+    }
+
+    if (!loginFormData.password) {
+      setLoginError("Password is required.");
+      return;
+    }
+
+    const payload = isEmailLogin
+      ? {
+          email: identifier.toLowerCase(),
+          password: loginFormData.password,
+        }
+      : {
+          phoneNumber: sanitizePhone(identifier),
+          password: loginFormData.password,
+        };
+
+    try {
+      setLoginLoading(true);
+      setLoginError("");
+
+      const res = await fetch("/api/seller-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setLoginError(data?.message || "Unable to login.");
+        return;
+      }
+
+      setLoggedInSeller(data?.sellerInfo ?? null);
+      setLoginFormData(initialLoginFormData);
+      router.push("/seller-dashboard");
+      router.refresh();
+    } catch {
+      setLoginError("Unable to connect to server. Please try again.");
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const resetForm = () => {
@@ -429,6 +577,7 @@ export default function SellerSignupWizard() {
     setCurrentStep(0);
     setFormData(initialFormData);
     setErrors({});
+    setError("");
   };
 
   return (
@@ -444,8 +593,8 @@ export default function SellerSignupWizard() {
         />
         <div className="absolute inset-0 bg-slate-950/60" />
 
-        <div className="relative mx-auto grid min-h-[680px] max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-center lg:px-8">
-          <div className="max-w-2xl">
+        <div className="relative mx-auto grid min-h-[760px] max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:px-8">
+          <div className="max-w-2xl lg:-ml-24 lg:self-center">
             <p className="text-sm font-black uppercase text-teal-300">
               Bazar Seller Signup Benefits
             </p>
@@ -474,30 +623,74 @@ export default function SellerSignupWizard() {
 
           <section
             aria-labelledby="seller-signup-title"
-            className="rounded-lg bg-white p-5 text-slate-950 shadow-2xl sm:p-6"
+            className="rounded-lg bg-white p-5 text-slate-950 shadow-2xl sm:flex sm:h-[660px] sm:self-start sm:p-6"
           >
+            <div className="flex flex-col sm:min-h-0 sm:flex-1">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-black uppercase text-teal-700">
-                  {step.eyebrow}
+                  {viewMode === "signup" ? step.eyebrow : "Seller access"}
                 </p>
                 <h2 id="seller-signup-title" className="mt-1 text-2xl font-black">
-                  Sign up as a Bazar Seller
+                  {viewMode === "signup"
+                    ? "Sign up as a Bazar Seller"
+                    : "Login to your seller account"}
                 </h2>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                {progress}%
+                {viewMode === "signup" ? `${progress}%` : "Ready"}
               </span>
             </div>
 
-            <p className="mt-3 text-sm text-slate-600">
-              Already have a seller account?{" "}
-              <Link
-                href="/seller-dashboard"
-                className="font-bold text-teal-700 hover:text-teal-800"
+            <div className="mt-4 grid grid-cols-2 rounded-lg bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => switchView("signup")}
+                className={`h-10 rounded-md text-sm font-black transition ${
+                  viewMode === "signup"
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
               >
-                Open seller dashboard
-              </Link>
+                Seller signup
+              </button>
+              <button
+                type="button"
+                onClick={() => switchView("login")}
+                className={`h-10 rounded-md text-sm font-black transition ${
+                  viewMode === "login"
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Seller login
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm text-slate-600">
+              {viewMode === "signup" ? (
+                <>
+                  Already have a seller account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchView("login")}
+                    className="font-bold text-teal-700 hover:text-teal-800"
+                  >
+                    Login here
+                  </button>
+                </>
+              ) : (
+                <>
+                  Need a seller account first?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchView("signup")}
+                    className="font-bold text-teal-700 hover:text-teal-800"
+                  >
+                    Start signup
+                  </button>
+                </>
+              )}
             </p>
 
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -507,8 +700,67 @@ export default function SellerSignupWizard() {
               />
             </div>
 
-            {submitted ? (
-              <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5">
+            <div className="mt-6 flex min-h-0 flex-1 flex-col">
+              {viewMode === "login" ? (
+              <form onSubmit={handleLoginSubmit} className="flex h-full min-h-0 flex-col">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">
+                    Email or mobile number <span className="text-red-600">*</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={loginFormData.identifier}
+                    onChange={(event) =>
+                      updateLoginField("identifier", event.target.value)
+                    }
+                    placeholder="seller@example.com or 98xxxxxxxx"
+                    className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">
+                    Password <span className="text-red-600">*</span>
+                  </span>
+                  <input
+                    type="password"
+                    value={loginFormData.password}
+                    onChange={(event) =>
+                      updateLoginField("password", event.target.value)
+                    }
+                    placeholder="Enter your seller password"
+                    className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+                  />
+                </label>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-black text-slate-950">
+                    Seller dashboard access
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Use the email or mobile number linked to your seller profile.
+                    Customer login and seller login stay separate.
+                  </p>
+                </div>
+
+                {loginError ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                    {loginError}
+                  </p>
+                ) : null}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="mt-auto h-11 w-full rounded-lg bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {loginLoading ? "Logging in..." : "Login to seller dashboard"}
+                </button>
+              </form>
+            ) : submitted ? (
+              <div className="flex h-full flex-col rounded-lg border border-emerald-200 bg-emerald-50 p-5">
                 <p className="text-lg font-black text-emerald-800">
                   Seller profile ready for review
                 </p>
@@ -516,22 +768,31 @@ export default function SellerSignupWizard() {
                   Your details are ready to connect with backend seller
                   onboarding. You completed {completedFields} profile fields.
                 </p>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="mt-4 h-11 rounded-lg bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800"
-                >
-                  Start another signup
-                </button>
-                <Link
-                  href="/seller-dashboard"
-                  className="ml-3 mt-4 inline-flex h-11 items-center rounded-lg bg-teal-500 px-4 text-sm font-black text-slate-950 transition hover:bg-teal-400"
-                >
-                  View seller dashboard
-                </Link>
+                <div className="mt-auto flex flex-wrap gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="h-11 rounded-lg bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800"
+                  >
+                    Start another signup
+                  </button>
+                  <Link
+                    href="/seller-dashboard"
+                    className="inline-flex h-11 items-center rounded-lg bg-teal-500 px-4 text-sm font-black text-slate-950 transition hover:bg-teal-400"
+                  >
+                    View seller dashboard
+                  </Link>
+                </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="mt-6">
+              <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {error ? (
+                  <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                    {error}
+                  </p>
+                ) : null}
+
                 {currentStep === 0 && (
                   <div className="grid gap-4">
                     <label className="block">
@@ -793,8 +1054,9 @@ export default function SellerSignupWizard() {
                     </div>
                   </div>
                 )}
+                </div>
 
-                <div className="mt-6 flex items-center justify-between gap-3">
+                <div className="mt-auto flex items-center justify-between gap-3 pt-6">
                   <button
                     type="button"
                     onClick={goBack}
@@ -814,14 +1076,17 @@ export default function SellerSignupWizard() {
                   ) : (
                     <button
                       type="submit"
+                      disabled={loading}
                       className="h-11 rounded-lg bg-teal-500 px-5 text-sm font-black text-slate-950 transition hover:bg-teal-400"
                     >
-                      Submit seller profile
+                      {loading ? "Submitting..." : "Submit seller profile"}
                     </button>
                   )}
                 </div>
               </form>
             )}
+            </div>
+            </div>
           </section>
         </div>
       </section>

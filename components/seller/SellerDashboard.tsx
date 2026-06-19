@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-import { useAuth } from "@/context/authContext";
+import { useSeller } from "@/context/sellerContext";
 
 type SellerProductDraft = {
   id: string;
@@ -25,17 +25,14 @@ type ProductFormState = {
   description: string;
 };
 
-type AuthSellerUser = {
+type SellerUser = {
   fullName?: string;
   email?: string;
-  role?: string;
-  accountType?: string;
-  isSeller?: boolean;
-  sellerStatus?: string;
+  sellerType?: string;
+  status?: string;
   verificationStatus?: string;
-  seller?: {
-    status?: string;
-    verificationStatus?: string;
+  shop?: {
+    shopName?: string;
   };
 };
 
@@ -205,20 +202,17 @@ const quickLinks = [
   "Open seller support",
 ];
 
-function hasSellerAccess(user: AuthSellerUser | null) {
+function hasSellerAccess(user: SellerUser | null) {
   if (!user) {
     return false;
   }
 
   return Boolean(
-    user.isSeller ||
-      user.role === "seller" ||
-      user.accountType === "seller" ||
-      user.sellerStatus === "approved" ||
+    user.email ||
+      user.status === "approved" ||
+      user.status === "pending" ||
       user.verificationStatus === "verified" ||
-      user.seller?.status === "approved" ||
-      user.seller?.verificationStatus === "verified" ||
-      user.email
+      user.verificationStatus === "submitted"
   );
 }
 
@@ -258,8 +252,8 @@ function MetricCard({
 }
 
 export default function SellerDashboard() {
-  const { user, loading: authLoading } = useAuth() as {
-    user: AuthSellerUser | null;
+  const { seller, loading: sellerLoading } = useSeller() as {
+    seller: SellerUser | null;
     loading: boolean;
   };
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -267,8 +261,8 @@ export default function SellerDashboard() {
     useState<ProductFormState>(initialProductForm);
   const [productDrafts, setProductDrafts] = useState<SellerProductDraft[]>([]);
   const [notice, setNotice] = useState("");
-  const sellerCanUseDashboard = hasSellerAccess(user);
-  const sellerName = user?.fullName || "Seller";
+  const sellerCanUseDashboard = hasSellerAccess(seller);
+  const sellerName = seller?.fullName || seller?.shop?.shopName || "Seller";
 
 
   const openAddProduct = () => {
@@ -367,7 +361,7 @@ const handleAddProduct = async (event: FormEvent<HTMLFormElement>) => {
   }
 };
 
-  if (authLoading) {
+  if (sellerLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 text-slate-950">
         <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
