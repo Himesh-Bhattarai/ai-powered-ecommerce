@@ -135,7 +135,6 @@ export async function POST(request) {
 }
 
 // DELETE product
-
 export async function DELETE(request) {
   try {
     const productId = request.nextUrl.searchParams.get("productId");
