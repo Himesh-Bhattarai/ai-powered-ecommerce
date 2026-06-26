@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "@/components/cart/CartProvider";
+import { useCartStore } from "@/components/cart/cartStore";
 import { useWishlist } from "@/components/wishlist/WishlistProvider";
 import type { Product } from "@/types/product";
 
@@ -17,7 +17,7 @@ const formatPrice = (price: number) =>
 export default function ProductPurchaseActions({
   product,
 }: ProductPurchaseActionsProps) {
-  const { addItem } = useCart();
+  const addItem = useCartStore((state) => state.addItem);
   const { isSaved, toggleItem } = useWishlist();
   const saved = isSaved(product._id);
 

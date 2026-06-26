@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useCart } from "@/components/cart/CartProvider";
+import { useCartStore } from "@/components/cart/cartStore";
 import { useWishlist } from "@/components/wishlist/WishlistProvider";
 
 type NavbarProps = {
@@ -28,7 +28,10 @@ export default function Navbar({
 }: NavbarProps) {
   const [user, setUser] = useState<AccountUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const { openCart, totalQuantity } = useCart();
+  const openCart = useCartStore((state) => state.openCart);
+  const totalQuantity = useCartStore((state) =>
+    state.items.reduce((total, item) => total + item.quantity, 0)
+  );
   const { totalItems: wishlistCount } = useWishlist();
   const showSearch = typeof searchValue === "string" && onSearchChange;
 

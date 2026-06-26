@@ -4,21 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ReactNode,
-  createContext,
-  useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { trackUserEvent } from "@/lib/personalization/client";
+import { useShallow } from "zustand/react/shallow";
 import type { Product } from "@/types/product";
-
-type CartItem = {
-  product: Product;
-  quantity: number;
-};
+import { useCartStore, type CartItem } from "@/components/cart/cartStore";
 
 type CartContextValue = {
   items: CartItem[];
@@ -33,26 +26,6 @@ type CartContextValue = {
   setQuantity: (productId: string, quantity: number) => void;
 };
 
-const CART_STORAGE_KEY = "bazar-cart";
-const CartContext = createContext<CartContextValue | null>(null);
-
-function readInitialCart() {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
-    const parsedCart = storedCart ? JSON.parse(storedCart) : [];
-
-    return Array.isArray(parsedCart)
-      ? parsedCart.filter((item) => item?.product?._id && item.quantity > 0)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -60,59 +33,47 @@ const formatPrice = (price: number) =>
   }).format(price);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(readInitialCart);
-  const [isOpen, setIsOpen] = useState(false);
+  const hasHydrated = useCartStore((state) => state.hasHydrated);
+  const syncFromServer = useCartStore((state) => state.syncFromServer);
 
   useEffect(() => {
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
+    if (!hasHydrated) {
+      return;
+    }
 
-  const closeCart = useCallback(() => setIsOpen(false), []);
-  const clearCart = useCallback(() => setItems([]), []);
-  const openCart = useCallback(() => setIsOpen(true), []);
+    void syncFromServer();
+  }, [hasHydrated, syncFromServer]);
 
-  const addItem = useCallback((product: Product, quantity = 1) => {
-    setItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.product._id === product._id);
+  return (
+    <>
+      {children}
+      <CartDrawer />
+    </>
+  );
+}
 
-      if (existingItem) {
-        return currentItems.map((item) =>
-          item.product._id === product._id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      }
-
-      return [...currentItems, { product, quantity }];
-    });
-    void trackUserEvent({
-      eventType: "add_to_cart",
-      productId: product._id,
-      productName: product.name,
-      category: product.category,
-      quantity,
-    });
-    setIsOpen(true);
-  }, []);
-
-  const setQuantity = useCallback((productId: string, quantity: number) => {
-    setItems((currentItems) => {
-      if (quantity <= 0) {
-        return currentItems.filter((item) => item.product._id !== productId);
-      }
-
-      return currentItems.map((item) =>
-        item.product._id === productId ? { ...item, quantity } : item
-      );
-    });
-  }, []);
-
-  const removeItem = useCallback((productId: string) => {
-    setItems((currentItems) =>
-      currentItems.filter((item) => item.product._id !== productId)
-    );
-  }, []);
-
+export function useCart(): CartContextValue {
+  const {
+    addItem,
+    clearCart,
+    closeCart,
+    isOpen,
+    items,
+    openCart,
+    removeItem,
+    setQuantity,
+  } = useCartStore(
+    useShallow((state) => ({
+      addItem: state.addItem,
+      clearCart: state.clearCart,
+      closeCart: state.closeCart,
+      isOpen: state.isOpen,
+      items: state.items,
+      openCart: state.openCart,
+      removeItem: state.removeItem,
+      setQuantity: state.setQuantity,
+    }))
+  );
   const subtotal = useMemo(
     () =>
       items.reduce(
@@ -126,7 +87,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [items]
   );
 
-  const value = useMemo<CartContextValue>(
+  return useMemo<CartContextValue>(
     () => ({
       items,
       isOpen,
@@ -152,23 +113,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       totalQuantity,
     ]
   );
-
-  return (
-    <CartContext.Provider value={value}>
-      {children}
-      <CartDrawer />
-    </CartContext.Provider>
-  );
-}
-
-export function useCart() {
-  const context = useContext(CartContext);
-
-  if (!context) {
-    throw new Error("useCart must be used inside CartProvider");
-  }
-
-  return context;
 }
 
 function CartDrawer() {

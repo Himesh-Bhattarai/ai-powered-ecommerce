@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCartStore } from "@/components/cart/cartStore";
 import { getGuestSessionId } from "@/lib/personalization/client";
-
 
 export default function LoginForm() {
   const router = useRouter();
+  const syncCartToServer = useCartStore((state) => state.syncToServer);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +42,7 @@ export default function LoginForm() {
 
       setMessage(data.message || "Login successful");
       form.reset();
+      await syncCartToServer();
       router.push(data.route || "/");
       router.refresh();
     } catch (err) {

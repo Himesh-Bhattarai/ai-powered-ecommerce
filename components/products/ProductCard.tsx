@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCart } from "@/components/cart/CartProvider";
+import { useCartStore } from "@/components/cart/cartStore";
 import { useWishlist } from "@/components/wishlist/WishlistProvider";
 import { trackUserEvent } from "@/lib/personalization/client";
 import type { Product } from "@/types/product";
@@ -18,7 +18,7 @@ const formatPrice = (price: number) =>
   }).format(price);
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const { addItem } = useCart();
+  const addItem = useCartStore((state) => state.addItem);
   const { isSaved, toggleItem } = useWishlist();
   const saved = isSaved(product._id);
   const trackProductClick = () => {
