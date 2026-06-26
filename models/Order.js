@@ -8,6 +8,15 @@ export const orderSchema = new mongoose.Schema({
         trim: true,
         uppercase: true,
     },
+    buyerId: {
+        type: String,
+        required: true,
+        index: true,
+    },
+    sellerId: {
+        type: String,
+        index: true,
+    },
 
     products: [
         {
@@ -63,3 +72,7 @@ export const orderSchema = new mongoose.Schema({
 }, {
     timestamps: true,
 })
+
+const Order = mongoose.models.Order || mongoose.model("Order", orderSchema);
+
+export default Order;

@@ -1,33 +1,16 @@
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+
 export async function POST() {
     try {
-        const cookieStore = cookies();
-        const accessToken = cookieStore.get("accessTOken")?.value
-
-        const tokenResult = verifyToken(accessToken)
-
-        if (!tokenResult.valid || !tokenResult.decoded._id) {
-            return NextResponse.json({
-                message: "Authentication required",
-            }, { status: 401 })
-        }
-
-        await connectDB();
-
-        const user = await User.findById(tokenResult.decoded._id).select("_id email fullName")
-
+        const cookieStore = await cookies();
         cookieStore.delete("accessToken");
         cookieStore.delete("refreshToken");
 
         return NextResponse.json({
-            message: "Logout successfully",
-            user: {
-                _id: user?._id,
-                fullName: user?.fullName,
-                email: user?.email
-
-            },
-            route: "/"
-        })
+            message: "Logged out successfully",
+            route: "/",
+        });
 
     } catch (error) {
         console.error("Logout route error:", error);

@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import connectDB from "@/lib/database/db";
 import User from "@/models/User";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 
 export async function POST(request) {
   try {
-    // read value
     const { newPassword, otp, email } = await request.json();
 
-    // validate value
     if (!newPassword || !otp || !email) {
       return NextResponse.json(
         { message: "All fields are required" },
@@ -28,20 +26,19 @@ export async function POST(request) {
     await connectDB();
 
     const user = await User.findOne({ email: normalizeEmail }).select(
-      "_id email password +hashOtp +hashOtpExpires"
+      "_id email password +passwordResetOtpHash +passwordResetOtpExpires"
     );
 
-    if (!user || !user.hashOtp || !user.hashOtpExpires) {
+    if (!user || !user.passwordResetOtpHash || !user.passwordResetOtpExpires) {
       return NextResponse.json(
         { message: "Invalid or expired OTP" },
         { status: 400 }
       );
     }
 
-    // check OTP expiry
-    if (user.hashOtpExpires < new Date()) {
-      user.hashOtp = undefined;
-      user.hashOtpExpires = undefined;
+    if (user.passwordResetOtpExpires < new Date()) {
+      user.passwordResetOtpHash = undefined;
+      user.passwordResetOtpExpires = undefined;
       await user.save();
 
       return NextResponse.json(
@@ -50,8 +47,10 @@ export async function POST(request) {
       );
     }
 
-    // verify OTP
-    const isMatch = await bcrypt.compare(otp.toString(), user.hashOtp);
+    const isMatch = await verifyPassword(
+      otp.toString(),
+      user.passwordResetOtpHash
+    );
 
     if (!isMatch) {
       return NextResponse.json(
@@ -60,15 +59,9 @@ export async function POST(request) {
       );
     }
 
-    // hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // update user password
-    user.password = hashedPassword;
-
-    // delete OTP after successful reset
-    user.hashOtp = undefined;
-    user.hashOtpExpires = undefined;
+    user.password = await hashPassword(newPassword);
+    user.passwordResetOtpHash = undefined;
+    user.passwordResetOtpExpires = undefined;
 
     await user.save();
 

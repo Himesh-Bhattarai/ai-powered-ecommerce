@@ -1,8 +1,18 @@
 import connectDB from "@/lib/database/db";
 import Product from "@/models/Product";
 
-export async function POST() {
+export async function POST(request) {
   try {
+    const seedSecret = process.env.SEED_SECRET;
+    const providedSecret = request.headers.get("x-seed-secret");
+
+    if ((process.env.NODE_ENV === "production" || seedSecret) && providedSecret !== seedSecret) {
+      return Response.json(
+        { message: "Seed route is disabled" },
+        { status: 403 }
+      );
+    }
+
     await connectDB();
 
     const seedProducts = [

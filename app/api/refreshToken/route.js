@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import connectDb from "@/lib/database/db";
 import User from "@/models/User";
-import { verifyToken, generateToken } from "@/lib/auth/token";
+import SellerInfo from "@/models/SellerInfo";
+import { verifyToken, generateToken } from "@/lib/jwt/token";
 
 export async function POST() {
   try {
-    // get refresh token from cookie
     const cookieStore = await cookies();
     const refreshToken = cookieStore.get("refreshToken")?.value;
 
@@ -17,10 +17,10 @@ export async function POST() {
       );
     }
 
-    // validate refresh token
-    const tokenResult = await verifyToken(refreshToken, "refresh");
+    const tokenResult = verifyToken(refreshToken);
+    const accountId = tokenResult.decoded?.id || tokenResult.decoded?._id;
 
-    if (!tokenResult.valid || !tokenResult.decoded?._id) {
+    if (!tokenResult.valid || !accountId) {
       const response = NextResponse.json(
         { message: "Invalid or expired refresh token" },
         { status: 401 }
@@ -32,16 +32,20 @@ export async function POST() {
       return response;
     }
 
-    // check user exists
     await connectDb();
 
-    const user = await User.findById(tokenResult.decoded._id).select(
+    const user = await User.findById(accountId).select(
       "_id email fullName"
     );
+    const seller = user
+      ? null
+      : await SellerInfo.findById(accountId).select(
+          "_id email fullName phoneNumber sellerType status verificationStatus shop"
+        );
 
-    if (!user) {
+    if (!user && !seller) {
       const response = NextResponse.json(
-        { message: "User account not found" },
+        { message: "Account not found" },
         { status: 401 }
       );
 
@@ -51,29 +55,29 @@ export async function POST() {
       return response;
     }
 
-    // prepare payload
+    const account = user || seller;
+    const role = user ? "buyer" : "seller";
     const payload = {
-      _id: user._id,
-      email: user.email,
-      fullName: user.fullName,
+      id: account._id.toString(),
+      email: account.email,
+      role,
     };
 
-    // create new access token and new refresh token
     const { accessToken, refreshToken: newRefreshToken } = generateToken(payload);
 
     const response = NextResponse.json(
       {
         message: "Token rotated successfully",
-        user: {
-          _id: user._id,
-          fullName: user.fullName,
-          email: user.email,
+        account: {
+          id: account._id,
+          fullName: account.fullName,
+          email: account.email,
+          role,
         },
       },
       { status: 200 }
     );
 
-    // set new access token cookie
     response.cookies.set("accessToken", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -82,7 +86,6 @@ export async function POST() {
       maxAge: 15 * 60, // 15 minutes
     });
 
-    // set new refresh token cookie
     response.cookies.set("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

@@ -27,6 +27,14 @@ export const UserSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true,
+    },
+    passwordResetOtpHash: {
+        type: String,
+        select: false,
+    },
+    passwordResetOtpExpires: {
+        type: Date,
+        select: false,
     }
 }, { timestamps: true })
 
