@@ -18,6 +18,13 @@ export async function GET() {
       return Response.json({ authenticated: false }, { status: 401 });
     }
 
+    if (decoded.role != "seller") {
+      return Response.json({
+        authenticated: false,
+        message: "Forbidden: Access is allowed only for sellers"
+      }, { status: 403 });
+    }
+
     await connectDB();
 
     const seller = await SellerInfo.findById(decoded.id).select(

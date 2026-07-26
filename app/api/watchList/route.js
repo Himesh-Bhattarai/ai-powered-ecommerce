@@ -162,4 +162,102 @@ export async function POST(request) {
 
 //Update
 
+
+
 //Delete
+export async function DELETE(request) {
+    try {
+        //Read the body
+        const body = await request.json();
+        const { productIds } = body;
+
+        //validate
+        if (!Array.isArray(productIds)) {
+            return apiResponse.badRequest("Product ids must be an array");
+        }
+
+        if (productIds.length === 0) {
+            return apiResponse.badRequest("Product ids cannot be empty");
+        }
+
+        const hasInvalidProductId = productIds.some(
+            (productId) => !mongoose.Types.ObjectId.isValid(productId)
+        );
+
+        if (hasInvalidProductId) {
+            return apiResponse.badRequest("Invalid product id");
+        }
+
+        // check all product are exist or not
+        const productCheck = await Product.find({
+            _id: { $in: productIds },
+        })
+
+        if (productCheck.length !== productIds.length) {
+            return apiResponse.badRequest("One or more products do not exist");
+        }
+
+        //get user Id
+        const cookieStore = await cookies();
+        const accessToken = cookieStore.get("accessToken")?.value
+
+        if (!accessToken) {
+            return apiResponse.badRequest("Authentication required")
+        }
+
+        const tokenResult = verifyToken(accessToken);
+        const userId = tokenResult.decoded?.id || tokenResult.decoded?._id;
+
+        if (!tokenResult.valid || !userId) {
+            return apiResponse.badRequest("Authentication required")
+        }
+
+        const user = await User.findById(userId).select("_id").lean();
+
+        if (!user) {
+            return apiResponse.badRequest("Invalid user")
+        }
+
+        // perform delete request
+        await connectDB();
+
+        const watchList = await WatchList.findOneAndUpdate({
+            userId
+        }, {
+            $pull: {
+                items: {
+                    productId: {
+                        $in: productIds
+                    }
+                }
+            }
+        }, {
+            new: true,
+            runValidators: true
+        }).lean();
+
+        if (!watchList) {
+            return apiResponse.notFound("WatchList not found");
+        }
+
+        return apiResponse.ok({
+            watchList: {
+                items: watchList.items
+            }
+        }, "WatchList deleted successfully")
+
+    } catch (error) {
+        logger.error("Unable to delete watchList.", {
+            route: "DELETE /api/watchList",
+            error: error.message,
+        });
+
+        return apiResponse.serverError("Unable to delete watchList", {
+            error: {
+                message: error.message
+            }
+        })
+
+
+    }
+}

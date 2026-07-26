@@ -52,7 +52,7 @@ Respond ONLY with raw JSON, no markdown, no explanation:
   ]
 }`;
 
-console.log("Let call ai")
+
     const aiResponse = await aiClient.chat.completions.create({
       model: process.env.AI_FAQ_MODEL || getAiModel(),
       messages: [{ role: "user", content: prompt }],

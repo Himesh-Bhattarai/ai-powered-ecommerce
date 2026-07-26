@@ -56,6 +56,8 @@ export async function POST(request) {
       id: seller._id,
       email: seller.email,
       phoneNumber: seller.phoneNumber,
+      role: "seller",
+      passwordVersion : seller.passwordVersion
     };
 
     const { refreshToken, accessToken } = await generateToken(payload);

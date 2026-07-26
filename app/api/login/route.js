@@ -39,7 +39,9 @@ export async function POST(request) {
 
     const { accessToken, refreshToken } = generateToken({
       id: user._id.toString(),
-      email: user.email
+      email: user.email,
+      role: "user",
+      passwordVersion: user.passwordVersion
     });
 
     const cookieOptions = await cookies();
@@ -47,14 +49,14 @@ export async function POST(request) {
     cookieOptions.set("accessToken" , accessToken, {
       httpOnly : true,
       secure: process.env.NODE_ENV === "production",
-      maxAge : 60 * 60 * 24, 
+      maxAge : 60 * 15,  // 15 min
       sameSite: "lax"
     })
 
     cookieOptions.set("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
       sameSite: "lax"
     })
 

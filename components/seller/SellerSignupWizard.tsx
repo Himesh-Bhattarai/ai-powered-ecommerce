@@ -43,6 +43,21 @@ type LoginFormData = {
   password: string;
 };
 
+type SellerSession = {
+  _id?: string;
+  id?: string;
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  sellerType?: string;
+  status?: string;
+  verificationStatus?: string;
+};
+
+type SellerContextValue = {
+  login: (sellerData: SellerSession | null) => void;
+};
+
 type ViewMode = "signup" | "login";
 
 // Initial Form Data
@@ -369,7 +384,7 @@ function TextAreaField({
 
 export default function SellerSignupWizard() {
   const router = useRouter();
-  const { login: setLoggedInSeller } = useSeller();
+  const { login: setLoggedInSeller } = useSeller() as SellerContextValue;
   const [viewMode, setViewMode] = useState<ViewMode>("signup");
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>(initialFormData);

@@ -18,6 +18,13 @@ export async function GET() {
       return Response.json({ authenticated: false }, { status: 401 });
     }
 
+    if(decoded.role != "user") {
+      return Response.json({
+        authenticated: false,
+        message: "Forbidden: Access is allowed only for users"
+      }, { status: 403 });
+    }
+
     await connectDB();
 
     const user = await User.findById(decoded.id).select(
